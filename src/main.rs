@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::{Bytes, Read},
-    path::Path,
-};
+use std::{fs, io::Read, path::Path};
 
 use clap::Parser;
 
@@ -21,7 +17,7 @@ fn read_input() -> Result<u8, std::io::Error> {
     Ok(input[0])
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Token {
     Output,
     Input,
@@ -30,12 +26,15 @@ enum Token {
     Loop(Vec<Token>),
 }
 
-fn compile(mut bytes: Bytes<File>, level: usize) -> (Vec<Token>, Bytes<File>) {
+fn compile(
+    mut bytes: std::slice::Iter<'_, u8>,
+    level: usize,
+) -> (Vec<Token>, std::slice::Iter<'_, u8>) {
     let mut tokens: Vec<Token> = Vec::new();
 
     loop {
         if let Some(byte) = bytes.next() {
-            let char = byte.unwrap() as char;
+            let char = *byte as char;
             match char {
                 '>' => tokens.push(Token::Move(1)),
                 '<' => tokens.push(Token::Move(-1)),
@@ -50,7 +49,7 @@ fn compile(mut bytes: Bytes<File>, level: usize) -> (Vec<Token>, Bytes<File>) {
                 }
                 ']' => {
                     if level == 0 {
-                        eprintln!("closed an nonexistent loop");
+                        eprintln!("compile error: closed an nonexistent loop");
                         std::process::exit(1);
                     } else {
                         return (tokens, bytes);
@@ -130,13 +129,49 @@ fn main() {
         std::process::exit(1);
     }
 
-    let file = File::open(path).expect("the File can't be open or it is not a file");
+    let data = fs::read_to_string(path).expect("the File can't be open or it is not a file");
 
     let mut memory: Vec<i8> = vec![0; 30_000];
     let mut dp: isize = 0;
     let mut ip: isize = 0;
 
-    let tokens = optimize(compile(file.bytes(), 0).0);
+    let tokens = optimize(compile(data.as_bytes().iter(), 0).0);
 
     run(&mut memory, &mut dp, &mut ip, &tokens)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_test() {
+        let data = "+++<>.[-,-jkjk]".to_owned();
+        let bytes = data.as_bytes();
+        let tokens = compile(bytes.iter(), 0).0;
+        let expected: Vec<Token> = vec![
+            Token::IncValue(1),
+            Token::IncValue(1),
+            Token::IncValue(1),
+            Token::Move(-1),
+            Token::Move(1),
+            Token::Output,
+            Token::Loop(vec![Token::IncValue(-1), Token::Input, Token::IncValue(-1)]),
+        ];
+        assert_eq!(tokens, expected)
+    }
+
+    #[test]
+    fn optimize_test() {
+        let data = "+++<>>.[-,--jkjk]".to_owned();
+        let bytes = data.as_bytes();
+        let tokens = optimize(compile(bytes.iter(), 0).0);
+        let expected: Vec<Token> = vec![
+            Token::IncValue(3),
+            Token::Move(1),
+            Token::Output,
+            Token::Loop(vec![Token::IncValue(-1), Token::Input, Token::IncValue(-2)]),
+        ];
+        assert_eq!(tokens, expected)
+    }
 }
