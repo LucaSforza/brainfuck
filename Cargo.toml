@@ -1,7 +1,17 @@
 [package]
 name = "brainfuck"
-version = "0.1.0"
+readme = "README.md"
+authors = ["Luca Sforza <lucasforza1234@icloud.com>"]
+license = "MIT"
+description = "Brainfuck interpreter in Rust"
+version = "1.0.0"
 edition = "2021"
+keywords = ["brainfuck", "interpreter", "esolang", "cli"]
+categories = ["Command line utilities","Development tools"]
+homepage = "https://github.com/LucaSforza/brainfuck"
+repository = "https://github.com/LucaSforza/brainfuck"
+maintenance = { status = "experimental" }
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

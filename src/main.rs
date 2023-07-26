@@ -97,16 +97,43 @@ enum Token {
     Loop(Vec<Token>),
 }
 
-fn compile(
-    mut bytes: std::slice::Iter<'_, u8>,
+fn search_extra_loop(stack: &mut Vec<(char, u32, u32)>) -> (u32, u32) {
+    let mut level: u32 = 0;
+    loop {
+        if let Some(values) = stack.pop() {
+            match values {
+                ('[', line, position) => {
+                    if level == 0 {
+                        return (line, position);
+                    }
+                    level -= 1
+                }
+                (']', _, _) => level += 1,
+                _ => panic!("token unespected in the stack: {:?}", values.0),
+            }
+        } else {
+            panic!("The extra loop was not found")
+        }
+    }
+}
+
+fn compile<'a>(
+    mut bytes: std::slice::Iter<'a, u8>,
     level: usize,
-) -> (Vec<Token>, std::slice::Iter<'_, u8>) {
+    stack: &mut Vec<(char, u32, u32)>,
+    line: &mut u32,
+    position: &mut u32,
+) -> (Vec<Token>, std::slice::Iter<'a, u8>) {
     let mut tokens: Vec<Token> = Vec::new();
 
     loop {
         if let Some(byte) = bytes.next() {
             let char = *byte as char;
             match char {
+                '\n' => {
+                    *line += 1;
+                    *position = 0
+                }
                 '>' => tokens.push(Token::Move(1)),
                 '<' => tokens.push(Token::Move(-1)),
                 '+' => tokens.push(Token::IncValue(1)),
@@ -114,15 +141,21 @@ fn compile(
                 '.' => tokens.push(Token::Output),
                 ',' => tokens.push(Token::Input),
                 '[' => {
-                    let (inner_tokens, next_bytes) = compile(bytes, level + 1);
+                    stack.push(('[', *line, *position));
+                    let (inner_tokens, next_bytes) =
+                        compile(bytes, level + 1, stack, line, position);
                     tokens.push(Token::Loop(inner_tokens));
                     bytes = next_bytes
                 }
                 ']' => {
                     if level == 0 {
-                        eprintln!("[COMPILE ERROR] closed an nonexistent loop");
+                        eprintln!(
+                            "[COMPILE ERROR] closed an nonexistent loop on line: {}:{}",
+                            line, position
+                        );
                         std::process::exit(1);
                     } else {
+                        stack.push((']', *line, *position));
                         return (tokens, bytes);
                     }
                 }
@@ -130,11 +163,16 @@ fn compile(
             }
         } else {
             if level > 0 {
-                eprintln!("[COMPILE ERROR] opened an nonexistent loop");
+                let (line, position) = search_extra_loop(stack);
+                eprintln!(
+                    "[COMPILE ERROR] opened an nonexistent loop on line: {}:{}",
+                    line, position
+                );
                 std::process::exit(1);
             }
             break;
         }
+        *position += 1
     }
 
     (tokens, bytes)
@@ -183,7 +221,7 @@ fn main() {
 
     let mut interpreter = Interpreter::default();
 
-    let tokens = optimize(compile(data.as_bytes().iter(), 0).0);
+    let tokens = optimize(compile(data.as_bytes().iter(), 0, &mut Vec::new(), &mut 1, &mut 1).0);
 
     interpreter.run(&tokens)
 }
