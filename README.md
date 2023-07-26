@@ -10,7 +10,7 @@ This is a simple command-line programme that executes brainfuck code
 Install brainfuck with cargo
 
 ```bash
-cargo install brainfuck
+cargo install brain_fuck
 ```
     
 ## How to use

@@ -1,5 +1,5 @@
 [package]
-name = "brainfuck"
+name = "brain_fuck"
 readme = "README.md"
 authors = ["Luca Sforza <lucasforza1234@icloud.com>"]
 license = "MIT"
