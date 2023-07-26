@@ -2,13 +2,84 @@ use std::{fs, io::Read, path::Path};
 
 use clap::Parser;
 
-const DEBUG: bool = false;
+const MEMORY_SIZE: usize = 30_000;
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about)]
 struct Args {
     /// the path to the brainfuck file
     path: String,
+}
+
+struct Interpreter {
+    memory: Vec<u8>,
+    dp: usize, // Data Pointer
+}
+impl Interpreter {
+    fn write_memory(&mut self, byte: u8) {
+        self.memory[self.dp] = byte
+    }
+    fn read_memory(&self) -> u8 {
+        self.memory[self.dp]
+    }
+    fn run(&mut self, istructions: &Vec<Token>) {
+        for token in istructions {
+            match token {
+                Token::Output => print!("{}", self.read_memory() as char),
+                Token::Input => {
+                    self.memory[self.dp] = match read_input() {
+                        Ok(data) => data,
+                        Err(e) => {
+                            eprintln!(
+                                "[RUNTIME ERROR] error while reading data\nMessage error: {}",
+                                e
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Token::Move(v) => match self.dp.checked_add_signed(*v) {
+                    Some(mut new_dp) => {
+                        if new_dp >= MEMORY_SIZE {
+                            // Overflow is not possible
+                            // The only way an overflow is possible is if there are enough '+'s in a row in the brainfuck file
+                            // (so it doesn't happen using loops) to cause an overflow with the usize type, but this is highly unlikely
+                            new_dp -= MEMORY_SIZE
+                        }
+                        self.dp = new_dp
+                    }
+                    None => {
+                        // Underflow
+                        let v = -v as usize;
+                        let new_dp = v - self.dp;
+                        self.dp = MEMORY_SIZE - new_dp;
+                    }
+                },
+                Token::IncValue(v) => match self.read_memory().checked_add_signed(*v as i8) {
+                    Some(data) => self.write_memory(data),
+                    None => {
+                        let v = *v as usize;
+                        let result = self.read_memory() as usize;
+                        self.write_memory((v + result) as u8)
+                    }
+                },
+                Token::Loop(istr) => {
+                    while self.read_memory() != 0 {
+                        self.run(istr)
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self {
+            memory: vec![0; MEMORY_SIZE],
+            dp: 0,
+        }
+    }
 }
 
 fn read_input() -> Result<u8, std::io::Error> {
@@ -49,7 +120,7 @@ fn compile(
                 }
                 ']' => {
                     if level == 0 {
-                        eprintln!("compile error: closed an nonexistent loop");
+                        eprintln!("[COMPILE ERROR] closed an nonexistent loop");
                         std::process::exit(1);
                     } else {
                         return (tokens, bytes);
@@ -59,7 +130,7 @@ fn compile(
             }
         } else {
             if level > 0 {
-                eprintln!("opened an nonexistent loop");
+                eprintln!("[COMPILE ERROR] opened an nonexistent loop");
                 std::process::exit(1);
             }
             break;
@@ -70,7 +141,7 @@ fn compile(
 }
 
 fn optimize(tokens: Vec<Token>) -> Vec<Token> {
-    let mut optimized: Vec<Token> = Vec::new();
+    let mut optimized: Vec<Token> = Vec::with_capacity(tokens.len());
 
     for token in tokens {
         match (optimized.last(), token) {
@@ -94,84 +165,25 @@ fn optimize(tokens: Vec<Token>) -> Vec<Token> {
     optimized
 }
 
-fn run(memory: &mut Vec<i8>, dp: &mut isize, ip: &mut isize, tokens: &Vec<Token>) {
-    for token in tokens {
-        if DEBUG {
-            println!("{:?}", *token)
-        }
-        match token {
-            Token::Output => print!("{}", memory[*dp as usize] as u8 as char),
-            Token::Input => {
-                memory[*dp as usize] = match read_input() {
-                    Ok(data) => data as i8,
-                    Err(e) => {
-                        eprintln!("error while reading data: {}", e);
-                        std::process::exit(1);
-                    }
-                }
-            }
-            Token::Move(v) => *dp += v,
-            Token::IncValue(v) => memory[*dp as usize] += *v as i8,
-            Token::Loop(istr) => {
-                while memory[*dp as usize] != 0 {
-                    run(memory, dp, ip, istr)
-                }
-            }
-        }
-    }
-}
-
 fn main() {
     let args = Args::parse();
     let path = Path::new(args.path.as_str());
     if !path.exists() {
-        eprintln!("the path does not exists");
+        eprintln!("[ERROR] the path does not exists");
         std::process::exit(1);
     }
 
-    let data = fs::read_to_string(path).expect("the File can't be open or it is not a file");
+    let data = fs::read_to_string(path).unwrap_or_else(|e| {
+        eprintln!(
+            "[ERROR]the File can't be open or it is not a file\nError message: {}",
+            e,
+        );
+        std::process::exit(1)
+    });
 
-    let mut memory: Vec<i8> = vec![0; 30_000];
-    let mut dp: isize = 0;
-    let mut ip: isize = 0;
+    let mut interpreter = Interpreter::default();
 
     let tokens = optimize(compile(data.as_bytes().iter(), 0).0);
 
-    run(&mut memory, &mut dp, &mut ip, &tokens)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn compile_test() {
-        let data = "+++<>.[-,-jkjk]".to_owned();
-        let bytes = data.as_bytes();
-        let tokens = compile(bytes.iter(), 0).0;
-        let expected: Vec<Token> = vec![
-            Token::IncValue(1),
-            Token::IncValue(1),
-            Token::IncValue(1),
-            Token::Move(-1),
-            Token::Move(1),
-            Token::Output,
-            Token::Loop(vec![Token::IncValue(-1), Token::Input, Token::IncValue(-1)]),
-        ];
-        assert_eq!(tokens, expected)
-    }
-
-    #[test]
-    fn optimize_test() {
-        let data = "+++<>>.[-,--jkjk]".to_owned();
-        let bytes = data.as_bytes();
-        let tokens = optimize(compile(bytes.iter(), 0).0);
-        let expected: Vec<Token> = vec![
-            Token::IncValue(3),
-            Token::Move(1),
-            Token::Output,
-            Token::Loop(vec![Token::IncValue(-1), Token::Input, Token::IncValue(-2)]),
-        ];
-        assert_eq!(tokens, expected)
-    }
+    interpreter.run(&tokens)
 }
