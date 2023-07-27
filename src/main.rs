@@ -1,4 +1,8 @@
-use std::{fs, io::Read, path::Path};
+use std::{
+    fs,
+    io::{Read, Write},
+    path::Path,
+};
 
 use clap::Parser;
 
@@ -31,7 +35,7 @@ impl Interpreter {
                         Ok(data) => data,
                         Err(e) => {
                             eprintln!(
-                                "[RUNTIME ERROR] error while reading data\nMessage error: {}",
+                                "\n\n[RUNTIME ERROR] error while reading data\nMessage error: {}",
                                 e
                             );
                             std::process::exit(1);
@@ -84,6 +88,7 @@ impl Default for Interpreter {
 
 fn read_input() -> Result<u8, std::io::Error> {
     let mut input = [0];
+    std::io::stdout().flush()?;
     std::io::stdin().read(&mut input)?;
     Ok(input[0])
 }
