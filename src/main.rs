@@ -59,14 +59,9 @@ impl Interpreter {
                         self.dp = MEMORY_SIZE - new_dp;
                     }
                 },
-                Token::IncValue(v) => match self.read_memory().checked_add_signed(*v as i8) {
-                    Some(data) => self.write_memory(data),
-                    None => {
-                        let v = *v as usize;
-                        let result = self.read_memory() as usize;
-                        self.write_memory((v + result) as u8)
-                    }
-                },
+                Token::IncValue(v) => {
+                    self.write_memory(self.read_memory().wrapping_add_signed(*v as i8))
+                }
                 Token::Loop(istr) => {
                     while self.read_memory() != 0 {
                         self.run(istr)
