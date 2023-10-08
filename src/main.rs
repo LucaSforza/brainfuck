@@ -1,19 +1,11 @@
 use std::{
+    env::{self, Args},
     fs,
     io::{Read, Write},
     path::Path,
 };
 
-use clap::Parser;
-
 const MEMORY_SIZE: usize = 30_000;
-
-#[derive(Debug, Parser)]
-#[clap(author, version, about)]
-struct Args {
-    /// the path to the brainfuck file
-    path: String,
-}
 
 struct Interpreter {
     memory: Vec<u8>,
@@ -203,9 +195,27 @@ fn optimize(tokens: Vec<Token>) -> Vec<Token> {
     optimized
 }
 
+struct Config {
+    file_path: String,
+}
+
+impl Config {
+    fn parse_args(mut args: Args) -> Self {
+        let program = args.next().unwrap();
+        let file_path = args.next().unwrap_or_else(|| {
+            eprintln!("[ERROR] no path to the brainfuck file provided");
+            eprintln!("[INFO] Usage: {program} <brainfuck file path>");
+            std::process::exit(1);
+        });
+        Self {
+            file_path: file_path,
+        }
+    }
+}
+
 fn main() {
-    let args = Args::parse();
-    let path = Path::new(args.path.as_str());
+    let config = Config::parse_args(env::args());
+    let path = Path::new(config.file_path.as_str());
     if !path.exists() {
         eprintln!("[ERROR] the path does not exists");
         std::process::exit(1);
